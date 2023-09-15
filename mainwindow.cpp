@@ -1,6 +1,8 @@
  #include "mainwindow.h"
 #include "ui_mainwindow.h"
-
+#include "tableprinter.h"
+#include"QPixmap"
+#include <QHeaderView>
 using namespace QXlsx;
 
 enum class Column
@@ -10,6 +12,69 @@ enum class Column
     Surname,
     Date
 }coll;
+ReceiverThread::ReceiverThread(QObject *parent) :
+    QThread(parent)
+{
+}
+
+//! [0]
+ReceiverThread::~ReceiverThread()
+{
+    m_mutex.lock();
+    m_quit = true;
+    m_mutex.unlock();
+    wait();
+}
+//! [0]
+
+//! [1] //! [2]
+void ReceiverThread::startReceiver(const QString &portName, int waitTimeout)
+{
+    //! [1]
+    const QMutexLocker locker(&m_mutex);
+    m_portName = portName;
+    m_waitTimeout = waitTimeout;
+
+    //! [3]
+    if (!isRunning())
+        start();
+}
+//! [2] //! [3]
+
+//! [4]
+void ReceiverThread::run()
+{
+
+    int currentWaitTimeout = m_waitTimeout;
+
+    QSerialPort serial;
+    serial.setPortName(m_portName);
+    if(serial.open(QIODevice::ReadOnly))
+    {
+        qDebug()<<"Serial is open";
+    }
+
+    while (!m_quit) {
+        //![6] //! [7]
+
+        qDebug()<<"Serial is open";
+        if (serial.waitForReadyRead(currentWaitTimeout)) {
+            //! [7] //! [8]
+            // re   ad request
+            qDebug()<<"Im debug 1";
+            QByteArray requestData = serial.readAll();
+
+            const QString request = QString::fromUtf8(requestData);
+                //! [12]
+            emit this->request(request);
+                //! [10] //! [11] //! [12]
+
+            //! [9] //! [11]
+        }
+
+    }
+    //! [13]
+}
 
 //Делегат для ограничения ввода для даты
 class YouEditMaskDelegate1 : public QStyledItemDelegate
@@ -48,7 +113,7 @@ MainWindow::MainWindow(QWidget *parent)
         qDebug("no open");
     }
     query=new QSqlQuery(db);
-    query->exec("CREATE TABLE Person (Фамилия varchar(25),Имя varchar(25), Отчество varchar(25),Дата DATE);");
+    query->exec("CREATE TABLE Person (Фамилия varchar(25),Имя varchar(25), Отчество varchar(25),Дата DATE,Вес real);");
     model=new QSqlTableModel(this,db);
     model->setTable("Person");
     model->select();
@@ -57,12 +122,17 @@ MainWindow::MainWindow(QWidget *parent)
 
      QObject::connect(ui->tableView->selectionModel(), SIGNAL(currentColumnChanged(const QModelIndex, const QModelIndex)),
                       this, SLOT(onTableViewactivmycoll(const QModelIndex, const QModelIndex)));
-
+    connect(&m_thread, SIGNAL(request(QString)), this,SLOT(showRequest(QString)));
 }
 //Деструктор разрушает окно
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+void MainWindow::showRequest(const QString &s)
+{
+
 }
 
 //Слот добавления данных из табличной модели в файл
@@ -170,8 +240,16 @@ void MainWindow::on_action_4_triggered()
     QPrintDialog dialog(&printer, this);
 
     if (dialog.exec() == QDialog::Accepted) {
-        QPainter painter(&printer);
-        ui->tableView->render(&painter);
+    QPainter painter(&printer);
+    ui->tableView->render(&painter);
     }
+
+}
+
+
+void MainWindow::on_pushButton_5_clicked()
+{
+    this->m_thread.startReceiver("COM1",10000);
+    ui->pushButton_5->setText("Подключено");
 }
 

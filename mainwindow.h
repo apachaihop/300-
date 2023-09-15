@@ -12,9 +12,13 @@
 #include <QMessageBox>
 #include <QTableWidget>
 #include <QVariant>
+#include <QThread>
 #include <QPrinter>
 #include <QPrintDialog>
 #include <QPainter>
+#include <QSerialPort>
+#include <QSerialPortInfo>
+#include <QMutex>
 
 #include "xlsxdocument.h"
 #include "xlsxchartsheet.h"
@@ -29,6 +33,29 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 //Закоголовок окна, где описываются основные переменные и слоты
+class ReceiverThread : public QThread
+{
+    Q_OBJECT
+
+public:
+    explicit ReceiverThread(QObject *parent = nullptr);
+    ~ReceiverThread();
+
+    void startReceiver(const QString &portName, int waitTimeout);
+
+signals:
+    void request(const QString &s);
+
+private:
+    void run() override;
+
+    QString m_portName;
+
+    int m_waitTimeout = 0;
+    QMutex m_mutex;
+    bool m_quit = false;
+};
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -38,6 +65,9 @@ public:
     ~MainWindow();
 
 private slots:
+
+    void showRequest(const QString &s);
+
     void on_pushButton_clicked();
 
     void on_pushButton_2_clicked();
@@ -56,12 +86,16 @@ private slots:
 
     void on_action_4_triggered();
 
+    void on_pushButton_5_clicked();
+
 private:
+    int m_transactionCount = 0;
     Ui::MainWindow *ui;
     Document xlsxW;
     QSqlDatabase db;
     QSqlQuery *query;
     QSqlTableModel *model;
     int m_row,m_column;
+    ReceiverThread m_thread;
 };
 #endif // MAINWINDOW_H
